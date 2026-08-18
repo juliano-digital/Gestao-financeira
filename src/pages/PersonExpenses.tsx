@@ -94,6 +94,17 @@ export const PersonExpenses: React.FC = () => {
             <h3 className="text-lg font-semibold opacity-95">Parte de {nomePessoa} (metade de tudo)</h3>
             <span className="text-3xl">💰</span>
           </div>
+          {/* Botão de acesso às anotações privadas desta pessoa */}
+<Link
+  to={`/notas/${nomePessoa.toLowerCase()}`}
+  className={`flex items-center justify-center gap-2 w-full rounded-lg py-3 font-semibold shadow-sm border-2 transition-colors ${
+    corDestaque === 'blue'
+      ? 'border-blue-200 text-blue-700 hover:bg-blue-50'
+      : 'border-pink-200 text-pink-700 hover:bg-pink-50'
+  }`}
+>
+  📝 Minhas Anotações
+</Link>
           {loading ? (
             <div className="text-2xl font-bold mt-6 animate-pulse">Carregando...</div>
           ) : (
