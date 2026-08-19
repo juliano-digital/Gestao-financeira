@@ -10,10 +10,11 @@ export interface Expense {
   numero_parcelas?: number;
   data_compra: string;
   responsavel: string;
+  paga: boolean;
   created_at: string;
 }
 
-export type ExpenseFormData = Omit<Expense, 'id' | 'created_at' | 'data_compra'>;
+export type ExpenseFormData = Omit<Expense, 'id' | 'created_at' | 'data_compra' | 'paga'>;
 
 export interface Parcela {
   id: string;

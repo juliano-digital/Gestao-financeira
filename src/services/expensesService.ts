@@ -9,6 +9,10 @@ import type { Expense, ExpenseFormData } from '../types/expense';
 
 const TABLE_NAME = 'gastos';
 
+/**
+ * Busca todos os gastos do banco de dados
+ * @returns Promessa contendo array de gastos
+ */
 export const getAllExpenses = async (): Promise<Expense[]> => {
   const { data, error } = await supabase
     .from(TABLE_NAME)
@@ -23,6 +27,12 @@ export const getAllExpenses = async (): Promise<Expense[]> => {
   return data || [];
 };
 
+/**
+ * Busca gastos dentro de um período
+ * @param dataInicio - Data inicial (YYYY-MM-DD)
+ * @param dataFim - Data final (YYYY-MM-DD)
+ * @returns Promessa contendo array de gastos filtrados
+ */
 export const getExpensesByDateRange = async (
   dataInicio: string,
   dataFim: string
@@ -42,6 +52,12 @@ export const getExpensesByDateRange = async (
   return data || [];
 };
 
+/**
+ * Cria um novo gasto no banco de dados
+ * Se for parcelado, também cria as parcelas correspondentes automaticamente
+ * @param expense - Dados do gasto a ser criado
+ * @returns Promessa contendo o gasto criado
+ */
 export const createExpense = async (expense: ExpenseFormData): Promise<Expense> => {
   const payload = {
     ...expense,
@@ -68,6 +84,12 @@ export const createExpense = async (expense: ExpenseFormData): Promise<Expense> 
   return data;
 };
 
+/**
+ * Atualiza um gasto existente
+ * @param id - ID do gasto
+ * @param expense - Dados atualizados do gasto
+ * @returns Promessa contendo o gasto atualizado
+ */
 export const updateExpense = async (
   id: string,
   expense: Partial<ExpenseFormData>
@@ -87,6 +109,11 @@ export const updateExpense = async (
   return data;
 };
 
+/**
+ * Deleta um gasto do banco de dados
+ * @param id - ID do gasto a ser deletado
+ * @returns Promessa vazia
+ */
 export const deleteExpense = async (id: string): Promise<void> => {
   const { error } = await supabase
     .from(TABLE_NAME)
@@ -97,4 +124,26 @@ export const deleteExpense = async (id: string): Promise<void> => {
     console.error('Erro ao deletar gasto:', error);
     throw error;
   }
+};
+
+/**
+ * Marca ou desmarca um gasto como pago
+ * @param id - ID do gasto
+ * @param paga - true para marcar como pago, false para desmarcar
+ * @returns Promessa contendo o gasto atualizado
+ */
+export const toggleExpensePaga = async (id: string, paga: boolean): Promise<Expense> => {
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .update({ paga })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao atualizar status de pagamento:', error);
+    throw error;
+  }
+
+  return data;
 };

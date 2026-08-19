@@ -1,6 +1,5 @@
 /**
  * Hook customizado para gerenciar estado e operações de gastos
- * Utiliza as funções do expensesService
  */
 
 import { useState, useEffect } from 'react';
@@ -11,6 +10,7 @@ import {
   createExpense,
   updateExpense,
   deleteExpense,
+  toggleExpensePaga,
 } from '../services/expensesService';
 
 interface UseExpensesReturn {
@@ -22,18 +22,14 @@ interface UseExpensesReturn {
   addExpense: (expense: ExpenseFormData) => Promise<void>;
   editExpense: (id: string, expense: Partial<ExpenseFormData>) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
+  togglePaga: (id: string, paga: boolean) => Promise<void>;
 }
 
-/**
- * Hook para gerenciar gastos
- * @returns Objeto contendo estado e funções para operações com gastos
- */
 export const useExpenses = (): UseExpensesReturn => {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Função para buscar todos os gastos
   const fetchAllExpenses = async () => {
     try {
       setLoading(true);
@@ -49,7 +45,6 @@ export const useExpenses = (): UseExpensesReturn => {
     }
   };
 
-  // Função para buscar gastos por período
   const fetchExpensesByDateRange = async (dataInicio: string, dataFim: string) => {
     try {
       setLoading(true);
@@ -65,12 +60,11 @@ export const useExpenses = (): UseExpensesReturn => {
     }
   };
 
-  // Função para adicionar um novo gasto
   const addExpense = async (expense: ExpenseFormData) => {
     try {
       setError(null);
       const newExpense = await createExpense(expense);
-      setExpenses([newExpense, ...expenses]);
+      setExpenses((prev) => [newExpense, ...prev]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao criar gasto';
       setError(message);
@@ -79,14 +73,11 @@ export const useExpenses = (): UseExpensesReturn => {
     }
   };
 
-  // Função para editar um gasto
   const editExpense = async (id: string, expense: Partial<ExpenseFormData>) => {
     try {
       setError(null);
       const updatedExpense = await updateExpense(id, expense);
-      setExpenses(
-        expenses.map((exp) => (exp.id === id ? updatedExpense : exp))
-      );
+      setExpenses((prev) => prev.map((exp) => (exp.id === id ? updatedExpense : exp)));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao atualizar gasto';
       setError(message);
@@ -95,12 +86,11 @@ export const useExpenses = (): UseExpensesReturn => {
     }
   };
 
-  // Função para deletar um gasto
   const removeExpense = async (id: string) => {
     try {
       setError(null);
       await deleteExpense(id);
-      setExpenses(expenses.filter((exp) => exp.id !== id));
+      setExpenses((prev) => prev.filter((exp) => exp.id !== id));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Erro ao deletar gasto';
       setError(message);
@@ -109,7 +99,19 @@ export const useExpenses = (): UseExpensesReturn => {
     }
   };
 
-  // Buscar gastos ao montar o componente
+  const togglePaga = async (id: string, paga: boolean) => {
+    try {
+      setError(null);
+      const updated = await toggleExpensePaga(id, paga);
+      setExpenses((prev) => prev.map((exp) => (exp.id === id ? updated : exp)));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Erro ao atualizar status de pagamento';
+      setError(message);
+      console.error(message);
+      throw err;
+    }
+  };
+
   useEffect(() => {
     fetchAllExpenses();
   }, []);
@@ -123,5 +125,6 @@ export const useExpenses = (): UseExpensesReturn => {
     addExpense,
     editExpense,
     removeExpense,
+    togglePaga,
   };
 };
