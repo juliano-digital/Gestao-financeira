@@ -2,16 +2,19 @@
  * Página PersonExpenses - Mostra TODAS as compras, com a parte (metade)
  * de cada uma atribuída à pessoa da página. Compras parceladas podem ser
  * expandidas para ver e marcar cada parcela como paga. Qualquer compra
- * pode ser marcada como paga, deixando a linha verde escura.
+ * pode ser marcada como paga, deixando a linha verde escura. Compras
+ * também podem ser editadas através de um modal.
  */
 
 import React, { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Layout, Card } from '../components';
 import { InstallmentsPanel } from '../components/expenses/InstallmentsPanel';
+import { EditExpenseModal } from '../components/expenses/EditExpenseModal';
 import { useExpenses } from '../hooks/useExpenses';
 import { formatCurrency, formatDateTime, formatPaymentMethod } from '../utils/formatCurrency';
 import { calculateTotalSpent } from '../utils/calculations';
+import type { Expense } from '../types/expense';
 
 const PESSOAS_VALIDAS: Record<string, 'Juliano' | 'Lidiane'> = {
   juliano: 'Juliano',
@@ -20,9 +23,10 @@ const PESSOAS_VALIDAS: Record<string, 'Juliano' | 'Lidiane'> = {
 
 export const PersonExpenses: React.FC = () => {
   const { pessoa } = useParams<{ pessoa: string }>();
-  const { expenses, loading, error, togglePaga } = useExpenses();
+  const { expenses, loading, error, togglePaga, editExpense } = useExpenses();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
   const nomePessoa = pessoa ? PESSOAS_VALIDAS[pessoa.toLowerCase()] : undefined;
 
@@ -121,6 +125,7 @@ export const PersonExpenses: React.FC = () => {
                     <th className="px-5 py-4 text-left font-bold text-gray-700">Data/Hora</th>
                     <th className="px-5 py-4 text-left font-bold text-gray-700">Pagamento</th>
                     <th className="px-5 py-4 text-center font-bold text-gray-700">Paga</th>
+                    <th className="px-5 py-4 text-center font-bold text-gray-700">Ações</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -188,10 +193,23 @@ export const PersonExpenses: React.FC = () => {
                               {isToggling ? '⏳' : '✓'}
                             </button>
                           </td>
+                          <td className="px-5 py-4 text-center">
+                            <button
+                              onClick={() => setEditingExpense(expense)}
+                              title="Editar compra"
+                              className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm transition-colors mx-auto ${
+                                expense.paga
+                                  ? 'border-white/60 text-white hover:bg-green-800'
+                                  : 'border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600'
+                              }`}
+                            >
+                              ✏️
+                            </button>
+                          </td>
                         </tr>
                         {isParcelado && isExpanded && (
                           <tr className="bg-gray-50">
-                            <td colSpan={7} className="px-5">
+                            <td colSpan={8} className="px-5">
                               <InstallmentsPanel gastoId={expense.id} />
                             </td>
                           </tr>
@@ -205,6 +223,12 @@ export const PersonExpenses: React.FC = () => {
           )}
         </Card>
       </div>
+
+      <EditExpenseModal
+        expense={editingExpense}
+        onClose={() => setEditingExpense(null)}
+        onSave={editExpense}
+      />
     </Layout>
   );
 };
