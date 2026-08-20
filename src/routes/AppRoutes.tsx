@@ -13,6 +13,7 @@ import { PersonNotes } from '../pages/PersonNotes';
 export const AppRoutes: React.FC = () => {
   return (
     <Routes>
+      
       <Route path="/" element={<Dashboard />} />
       <Route path="/novo-gasto" element={<NewExpense />} />
       <Route path="/gastos/:pessoa" element={<PersonExpenses />} />

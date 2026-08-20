@@ -22,7 +22,9 @@ export interface Expense {
 export type ExpenseFormData = Omit<
   Expense,
   'id' | 'created_at' | 'data_compra' | 'paga' | 'paga_juliano' | 'paga_lidiane'
->;
+> & {
+  data_compra?: string;
+};
 
 export interface Parcela {
   id: string;

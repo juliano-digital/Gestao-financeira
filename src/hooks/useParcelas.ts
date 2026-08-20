@@ -19,10 +19,6 @@ interface UseParcelasReturn {
   togglePagaPessoa: (id: string, pessoa: 'Juliano' | 'Lidiane', novoPaga: boolean) => Promise<void>;
 }
 
-/**
- * Hook para gerenciar as parcelas de um gasto específico
- * @param gastoId - ID do gasto (ou null se não houver gasto selecionado)
- */
 export const useParcelas = (gastoId: string | null): UseParcelasReturn => {
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,13 +75,6 @@ interface UseAllParcelasReturn {
   refetch: () => Promise<void>;
 }
 
-/**
- * Hook para buscar TODAS as parcelas (usado para calcular status "Pago" no
- * Dashboard e a lista de "Parcelas Pendentes"). Expõe `refetch` para ser
- * chamado manualmente sempre que uma parcela for alterada em outro lugar
- * da tela (ex: dentro do InstallmentsPanel), já que aquele componente
- * gerencia seu próprio estado local e não atualiza este hook sozinho.
- */
 export const useAllParcelas = (): UseAllParcelasReturn => {
   const [parcelas, setParcelas] = useState<Parcela[]>([]);
   const [loading, setLoading] = useState(true);

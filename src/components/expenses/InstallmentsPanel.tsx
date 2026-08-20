@@ -19,7 +19,7 @@ interface InstallmentsPanelProps {
   /** Chamado depois que uma parcela é marcada/desmarcada como paga,
    * para o componente pai atualizar contadores que dependem disso
    * (ex: "X de Y pagas" na área de Parcelas Pendentes) */
-  onParcelaToggled?: () => void;
+  onParcelaToggled?: () => void | Promise<void>;
 }
 
 export const InstallmentsPanel: React.FC<InstallmentsPanelProps> = ({
@@ -30,9 +30,9 @@ export const InstallmentsPanel: React.FC<InstallmentsPanelProps> = ({
   const { parcelas, loading, error, togglePaga, togglePagaPessoa } = useParcelas(gastoId);
 
   const isPagaPeloUsuario = (parcela: Parcela): boolean => {
-    if (pessoa === 'Juliano') return parcela.paga_juliano;
-    if (pessoa === 'Lidiane') return parcela.paga_lidiane;
-    return parcela.paga;
+    if (pessoa === 'Juliano') return !!parcela.paga_juliano;
+    if (pessoa === 'Lidiane') return !!parcela.paga_lidiane;
+    return !!parcela.paga;
   };
 
   const handleToggle = async (parcela: Parcela) => {
@@ -42,7 +42,9 @@ export const InstallmentsPanel: React.FC<InstallmentsPanelProps> = ({
     } else {
       await togglePaga(parcela.id, novoPaga);
     }
-    onParcelaToggled?.();
+    if (onParcelaToggled) {
+      await onParcelaToggled();
+    }
   };
 
   if (loading) {

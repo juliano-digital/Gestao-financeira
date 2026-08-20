@@ -10,10 +10,10 @@
  * da Lidiane continua mostrando aquele valor como não pago até ela também
  * marcar a parte dela.
  *
- * O card "Falta Pagar" mostra o valor da FATURA DO CICLO ATUAL (fecha dia 4,
- * vence dia 10 do mês seguinte): contas à vista feitas dentro dessa janela +
- * a próxima parcela não paga de cada compra parcelada. Depois do dia 10 a
- * contagem passa sozinha para o próximo ciclo — não precisa mexer em nada.
+ * Único card da página mostra o total do MÊS ATUAL (mês civil: dia 1 até o
+ * último dia do mês): contas à vista feitas neste mês + a parcela que "mora"
+ * neste mês em cada compra parcelada. No dia 1 do mês seguinte, zera
+ * automaticamente e começa a contagem do novo mês.
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -24,12 +24,10 @@ import { EditExpenseModal } from '../components/expenses/EditExpenseModal';
 import { useExpenses } from '../hooks/useExpenses';
 import { useAllParcelas } from '../hooks/useParcelas';
 import { formatCurrency, formatDateTime, formatPaymentMethod } from '../utils/formatCurrency';
-import { calculateTotalSpent } from '../utils/calculations';
 import { calcularFatura } from '../utils/faturaCalculations';
 import type { Expense } from '../types/expense';
 
-// Intervalo de checagem da data do sistema (1 minuto é suficiente para
-// detectar a virada do ciclo — dia 4 ou dia 10 — sem pesar no navegador)
+// Checa a cada 1 minuto a virada do mês
 const CHECK_INTERVAL_MS = 60 * 1000;
 
 const PESSOAS_VALIDAS: Record<string, 'Juliano' | 'Lidiane'> = {
@@ -37,8 +35,8 @@ const PESSOAS_VALIDAS: Record<string, 'Juliano' | 'Lidiane'> = {
   lidiane: 'Lidiane',
 };
 
-const formatDiaMes = (data: Date): string =>
-  data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+const formatNomeMes = (data: Date): string =>
+  data.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
 
 export const PersonExpenses: React.FC = () => {
   const { pessoa } = useParams<{ pessoa: string }>();
@@ -48,9 +46,7 @@ export const PersonExpenses: React.FC = () => {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
-  // Data de referência usada para calcular o ciclo da fatura. Atualizada
-  // periodicamente para que o card mude de ciclo sozinho quando o dia 4
-  // ou o dia 10 virar, sem precisar recarregar a página.
+  // Data de referência — atualiza sozinho ao virar o mês
   const [agora, setAgora] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -60,23 +56,11 @@ export const PersonExpenses: React.FC = () => {
 
   const nomePessoa = pessoa ? PESSOAS_VALIDAS[pessoa.toLowerCase()] : undefined;
 
-  const resumoFatura = useMemo(() => {
-  if (!nomePessoa) return null;
-  const resultado = calcularFatura(expenses, parcelas, nomePessoa, agora);
-  console.log('[DEBUG fatura]', {
-    pessoa: nomePessoa,
-    resultado,
-    expenses: expenses.map((e) => ({
-      local: e.local,
-      valor: e.valor,
-      forma: e.forma_pagamento,
-      data: e.data_compra,
-      paga_juliano: e.paga_juliano,
-      paga_lidiane: e.paga_lidiane,
-    })),
-  });
-  return resultado;
-}, [expenses, parcelas, nomePessoa, agora]);
+  // Recalcula automaticamente quando os dados mudam
+  const resumoFatura = useMemo(
+    () => (nomePessoa ? calcularFatura(expenses, parcelas, nomePessoa, agora) : null),
+    [expenses, parcelas, nomePessoa, agora]
+  );
 
   if (!nomePessoa) {
     return (
@@ -91,12 +75,9 @@ export const PersonExpenses: React.FC = () => {
     );
   }
 
-  const totalGeral = calculateTotalSpent(expenses);
-  const suaParteTotal = totalGeral / 2;
   const corDestaque = nomePessoa === 'Juliano' ? 'blue' : 'pink';
   const faturaCarregando = loading || loadingParcelas;
 
-  // Retorna se ESTA pessoa (a dona da página) já pagou a parte dela nesta compra
   const pagaPelaPessoa = (expense: Expense): boolean =>
     nomePessoa === 'Juliano' ? expense.paga_juliano : expense.paga_lidiane;
 
@@ -107,9 +88,11 @@ export const PersonExpenses: React.FC = () => {
   const handleTogglePaga = async (expense: Expense) => {
     try {
       setTogglingId(expense.id);
-      await togglePagaPessoa(expense.id, nomePessoa, !pagaPelaPessoa(expense));
+      const novoEstado = !pagaPelaPessoa(expense);
+      await togglePagaPessoa(expense.id, nomePessoa, novoEstado);
+      await refetchParcelas();
     } catch (err) {
-      console.error(err);
+      console.error('Erro ao atualizar status de pagamento:', err);
     } finally {
       setTogglingId(null);
     }
@@ -125,31 +108,12 @@ export const PersonExpenses: React.FC = () => {
           </div>
         )}
 
-        <div
-          className={`rounded-lg p-6 text-white shadow-lg ${
-            corDestaque === 'blue'
-              ? 'bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600'
-              : 'bg-gradient-to-br from-pink-600 via-pink-500 to-rose-600'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold opacity-95">Parte de {nomePessoa} (metade de tudo)</h3>
-            <span className="text-3xl">💰</span>
-          </div>
-          {loading ? (
-            <div className="text-2xl font-bold mt-6 animate-pulse">Carregando...</div>
-          ) : (
-            <div className="text-4xl font-bold mt-6">{formatCurrency(suaParteTotal)}</div>
-          )}
-        </div>
-
-        {/* Card "Falta Pagar": valor da fatura do CICLO ATUAL (à vista do
-            período + próxima parcela não paga), descontando o que ESTA
-            pessoa já marcou como pago. Muda de ciclo sozinho: fecha dia 4,
-            vence dia 10 do mês seguinte. */}
+        {/* CARD PRINCIPAL: VALOR DO MÊS ATUAL */}
         <div className="rounded-lg p-6 text-white shadow-lg bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold opacity-95">💳 Falta Pagar — {nomePessoa}</h3>
+            <h3 className="text-lg font-semibold opacity-95">
+              💳 Falta Pagar — {nomePessoa}
+            </h3>
             <span className="text-3xl">🧾</span>
           </div>
           {faturaCarregando || !resumoFatura ? (
@@ -158,20 +122,18 @@ export const PersonExpenses: React.FC = () => {
             <>
               <div className="text-4xl font-bold mt-6">{formatCurrency(resumoFatura.restante)}</div>
               <p className="text-sm opacity-80 mt-1">ainda falta {nomePessoa.toLowerCase()} pagar</p>
-              <div className="flex gap-6 mt-4 text-sm opacity-90">
-                <span>Total: {formatCurrency(resumoFatura.total)}</span>
+              <div className="flex gap-6 mt-4 text-sm opacity-90 flex-wrap">
+                <span>Total do mês: {formatCurrency(resumoFatura.total)}</span>
                 <span>Já pago: {formatCurrency(resumoFatura.pago)}</span>
               </div>
-              <p className="text-xs opacity-60 mt-3">
-  Fatura fecha dia {formatDiaMes(resumoFatura.cicloFim)} e fica em aberto até
-  dia {formatDiaMes(resumoFatura.cicloVencimento)} — depois disso começa a
-  contagem do mês seguinte
-</p>
+              <p className="text-xs opacity-60 mt-3 capitalize">
+                Referente a {formatNomeMes(resumoFatura.mesInicio)}
+              </p>
             </>
           )}
         </div>
 
-        {/* Botão de acesso às anotações privadas desta pessoa */}
+        {/* Botão de acesso às anotações */}
         <Link
           to={`/notas/${nomePessoa.toLowerCase()}`}
           className={`flex items-center justify-center gap-2 w-full rounded-lg py-3 font-semibold shadow-sm border-2 transition-colors ${
@@ -183,6 +145,7 @@ export const PersonExpenses: React.FC = () => {
           📝 Minhas Anotações
         </Link>
 
+        {/* Lista de Compras */}
         <Card title="📋 Todas as Compras">
           {loading ? (
             <div className="text-center py-12">
@@ -218,17 +181,12 @@ export const PersonExpenses: React.FC = () => {
                     const isToggling = togglingId === expense.id;
                     const pagaPorMim = pagaPelaPessoa(expense);
 
-                    // Linha paga: verde escuro fixo, sem efeito de hover diferente.
-                    // Aqui "paga" é sempre em relação a ESTA pessoa (dona da página).
-                    // Linha não paga: mantém o zebrado + hover azul claro de antes.
                     const rowClasses = pagaPorMim
                       ? 'bg-green-700'
                       : idx % 2 === 0
                       ? 'bg-white hover:bg-blue-50'
                       : 'bg-gray-50 hover:bg-blue-50';
 
-                    // Textos ficam claros quando a linha está paga, para manter contraste
-                    // sobre o fundo verde escuro.
                     const textPrimary = pagaPorMim ? 'text-white' : 'text-gray-800';
                     const textSecondary = pagaPorMim ? 'text-green-50' : 'text-gray-600';
                     const textParte = pagaPorMim
@@ -298,7 +256,9 @@ export const PersonExpenses: React.FC = () => {
                               <InstallmentsPanel
                                 gastoId={expense.id}
                                 pessoa={nomePessoa}
-                                onParcelaToggled={refetchParcelas}
+                                onParcelaToggled={async () => {
+                                  await refetchParcelas();
+                                }}
                               />
                             </td>
                           </tr>
