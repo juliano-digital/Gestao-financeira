@@ -6,9 +6,16 @@
 import React from 'react';
 import { useParcelas } from '../../hooks/useParcelas';
 import { formatCurrency } from '../../utils/formatCurrency';
+import type { Parcela } from '../../types/expense';
 
 interface InstallmentsPanelProps {
   gastoId: string;
+  /**
+   * Se informado, o painel controla o pagamento ESPECÍFICO dessa pessoa
+   * (paga_juliano / paga_lidiane) em vez do status combinado antigo.
+   * Deixe undefined para manter o comportamento antigo (campo único "paga").
+   */
+  pessoa?: 'Juliano' | 'Lidiane';
   /** Chamado depois que uma parcela é marcada/desmarcada como paga,
    * para o componente pai atualizar contadores que dependem disso
    * (ex: "X de Y pagas" na área de Parcelas Pendentes) */
@@ -17,12 +24,24 @@ interface InstallmentsPanelProps {
 
 export const InstallmentsPanel: React.FC<InstallmentsPanelProps> = ({
   gastoId,
+  pessoa,
   onParcelaToggled,
 }) => {
-  const { parcelas, loading, error, togglePaga } = useParcelas(gastoId);
+  const { parcelas, loading, error, togglePaga, togglePagaPessoa } = useParcelas(gastoId);
 
-  const handleToggle = async (id: string, novoPaga: boolean) => {
-    await togglePaga(id, novoPaga);
+  const isPagaPeloUsuario = (parcela: Parcela): boolean => {
+    if (pessoa === 'Juliano') return parcela.paga_juliano;
+    if (pessoa === 'Lidiane') return parcela.paga_lidiane;
+    return parcela.paga;
+  };
+
+  const handleToggle = async (parcela: Parcela) => {
+    const novoPaga = !isPagaPeloUsuario(parcela);
+    if (pessoa) {
+      await togglePagaPessoa(parcela.id, pessoa, novoPaga);
+    } else {
+      await togglePaga(parcela.id, novoPaga);
+    }
     onParcelaToggled?.();
   };
 
@@ -40,42 +59,45 @@ export const InstallmentsPanel: React.FC<InstallmentsPanelProps> = ({
 
   return (
     <div className="space-y-2 py-3">
-      {parcelas.map((parcela) => (
-        <div
-          key={parcela.id}
-          className={`flex items-center justify-between px-4 py-2 rounded-lg border ${
-            parcela.paga ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => handleToggle(parcela.id, !parcela.paga)}
-              title={parcela.paga ? 'Marcar como não paga' : 'Marcar como paga'}
-              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors ${
-                parcela.paga
-                  ? 'bg-green-600 border-green-600 text-white'
-                  : 'bg-white border-gray-300 text-transparent hover:border-blue-400'
-              }`}
-            >
-              ✓
-            </button>
-            <span className="text-sm font-medium text-gray-700">
-              Parcela {parcela.numero_parcela}
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            <span className="text-gray-600">{formatCurrency(parcela.valor_parcela)}</span>
-            <span className="font-semibold text-gray-800">
-              Sua parte: {formatCurrency(parcela.valor_parcela / 2)}
-            </span>
-            {parcela.paga && (
-              <span className="text-green-700 font-semibold text-xs bg-green-100 px-2 py-0.5 rounded-full">
-                Pago
+      {parcelas.map((parcela) => {
+        const paga = isPagaPeloUsuario(parcela);
+        return (
+          <div
+            key={parcela.id}
+            className={`flex items-center justify-between px-4 py-2 rounded-lg border ${
+              paga ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleToggle(parcela)}
+                title={paga ? 'Marcar como não paga' : 'Marcar como paga'}
+                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors ${
+                  paga
+                    ? 'bg-green-600 border-green-600 text-white'
+                    : 'bg-white border-gray-300 text-transparent hover:border-blue-400'
+                }`}
+              >
+                ✓
+              </button>
+              <span className="text-sm font-medium text-gray-700">
+                Parcela {parcela.numero_parcela}
               </span>
-            )}
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              <span className="text-gray-600">{formatCurrency(parcela.valor_parcela)}</span>
+              <span className="font-semibold text-gray-800">
+                Sua parte: {formatCurrency(parcela.valor_parcela / 2)}
+              </span>
+              {paga && (
+                <span className="text-green-700 font-semibold text-xs bg-green-100 px-2 py-0.5 rounded-full">
+                  Pago
+                </span>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

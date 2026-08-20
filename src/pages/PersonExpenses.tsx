@@ -4,31 +4,79 @@
  * expandidas para ver e marcar cada parcela como paga. Qualquer compra
  * pode ser marcada como paga, deixando a linha verde escura. Compras
  * também podem ser editadas através de um modal.
+ *
+ * O pagamento é controlado SEPARADAMENTE por pessoa: quando o Juliano marca
+ * uma compra (ou parcela) como paga, isso só afeta a página dele — a página
+ * da Lidiane continua mostrando aquele valor como não pago até ela também
+ * marcar a parte dela.
+ *
+ * O card "Falta Pagar" mostra o valor da FATURA DO CICLO ATUAL (fecha dia 4,
+ * vence dia 10 do mês seguinte): contas à vista feitas dentro dessa janela +
+ * a próxima parcela não paga de cada compra parcelada. Depois do dia 10 a
+ * contagem passa sozinha para o próximo ciclo — não precisa mexer em nada.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Layout, Card } from '../components';
 import { InstallmentsPanel } from '../components/expenses/InstallmentsPanel';
 import { EditExpenseModal } from '../components/expenses/EditExpenseModal';
 import { useExpenses } from '../hooks/useExpenses';
+import { useAllParcelas } from '../hooks/useParcelas';
 import { formatCurrency, formatDateTime, formatPaymentMethod } from '../utils/formatCurrency';
 import { calculateTotalSpent } from '../utils/calculations';
+import { calcularFatura } from '../utils/faturaCalculations';
 import type { Expense } from '../types/expense';
+
+// Intervalo de checagem da data do sistema (1 minuto é suficiente para
+// detectar a virada do ciclo — dia 4 ou dia 10 — sem pesar no navegador)
+const CHECK_INTERVAL_MS = 60 * 1000;
 
 const PESSOAS_VALIDAS: Record<string, 'Juliano' | 'Lidiane'> = {
   juliano: 'Juliano',
   lidiane: 'Lidiane',
 };
 
+const formatDiaMes = (data: Date): string =>
+  data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+
 export const PersonExpenses: React.FC = () => {
   const { pessoa } = useParams<{ pessoa: string }>();
-  const { expenses, loading, error, togglePaga, editExpense } = useExpenses();
+  const { expenses, loading, error, togglePagaPessoa, editExpense } = useExpenses();
+  const { parcelas, loading: loadingParcelas, refetch: refetchParcelas } = useAllParcelas();
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
 
+  // Data de referência usada para calcular o ciclo da fatura. Atualizada
+  // periodicamente para que o card mude de ciclo sozinho quando o dia 4
+  // ou o dia 10 virar, sem precisar recarregar a página.
+  const [agora, setAgora] = useState<Date>(new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setAgora(new Date()), CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, []);
+
   const nomePessoa = pessoa ? PESSOAS_VALIDAS[pessoa.toLowerCase()] : undefined;
+
+  const resumoFatura = useMemo(() => {
+  if (!nomePessoa) return null;
+  const resultado = calcularFatura(expenses, parcelas, nomePessoa, agora);
+  console.log('[DEBUG fatura]', {
+    pessoa: nomePessoa,
+    resultado,
+    expenses: expenses.map((e) => ({
+      local: e.local,
+      valor: e.valor,
+      forma: e.forma_pagamento,
+      data: e.data_compra,
+      paga_juliano: e.paga_juliano,
+      paga_lidiane: e.paga_lidiane,
+    })),
+  });
+  return resultado;
+}, [expenses, parcelas, nomePessoa, agora]);
 
   if (!nomePessoa) {
     return (
@@ -46,15 +94,20 @@ export const PersonExpenses: React.FC = () => {
   const totalGeral = calculateTotalSpent(expenses);
   const suaParteTotal = totalGeral / 2;
   const corDestaque = nomePessoa === 'Juliano' ? 'blue' : 'pink';
+  const faturaCarregando = loading || loadingParcelas;
+
+  // Retorna se ESTA pessoa (a dona da página) já pagou a parte dela nesta compra
+  const pagaPelaPessoa = (expense: Expense): boolean =>
+    nomePessoa === 'Juliano' ? expense.paga_juliano : expense.paga_lidiane;
 
   const toggleExpand = (id: string) => {
     setExpandedId((prev) => (prev === id ? null : id));
   };
 
-  const handleTogglePaga = async (id: string, pagaAtual: boolean) => {
+  const handleTogglePaga = async (expense: Expense) => {
     try {
-      setTogglingId(id);
-      await togglePaga(id, !pagaAtual);
+      setTogglingId(expense.id);
+      await togglePagaPessoa(expense.id, nomePessoa, !pagaPelaPessoa(expense));
     } catch (err) {
       console.error(err);
     } finally {
@@ -87,6 +140,34 @@ export const PersonExpenses: React.FC = () => {
             <div className="text-2xl font-bold mt-6 animate-pulse">Carregando...</div>
           ) : (
             <div className="text-4xl font-bold mt-6">{formatCurrency(suaParteTotal)}</div>
+          )}
+        </div>
+
+        {/* Card "Falta Pagar": valor da fatura do CICLO ATUAL (à vista do
+            período + próxima parcela não paga), descontando o que ESTA
+            pessoa já marcou como pago. Muda de ciclo sozinho: fecha dia 4,
+            vence dia 10 do mês seguinte. */}
+        <div className="rounded-lg p-6 text-white shadow-lg bg-gradient-to-br from-gray-800 via-gray-700 to-gray-900">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold opacity-95">💳 Falta Pagar — {nomePessoa}</h3>
+            <span className="text-3xl">🧾</span>
+          </div>
+          {faturaCarregando || !resumoFatura ? (
+            <div className="text-2xl font-bold mt-6 animate-pulse">Carregando...</div>
+          ) : (
+            <>
+              <div className="text-4xl font-bold mt-6">{formatCurrency(resumoFatura.restante)}</div>
+              <p className="text-sm opacity-80 mt-1">ainda falta {nomePessoa.toLowerCase()} pagar</p>
+              <div className="flex gap-6 mt-4 text-sm opacity-90">
+                <span>Total: {formatCurrency(resumoFatura.total)}</span>
+                <span>Já pago: {formatCurrency(resumoFatura.pago)}</span>
+              </div>
+              <p className="text-xs opacity-60 mt-3">
+  Fatura fecha dia {formatDiaMes(resumoFatura.cicloFim)} e fica em aberto até
+  dia {formatDiaMes(resumoFatura.cicloVencimento)} — depois disso começa a
+  contagem do mês seguinte
+</p>
+            </>
           )}
         </div>
 
@@ -124,7 +205,9 @@ export const PersonExpenses: React.FC = () => {
                     <th className="px-5 py-4 text-left font-bold text-gray-700">Comprado por</th>
                     <th className="px-5 py-4 text-left font-bold text-gray-700">Data/Hora</th>
                     <th className="px-5 py-4 text-left font-bold text-gray-700">Pagamento</th>
-                    <th className="px-5 py-4 text-center font-bold text-gray-700">Paga</th>
+                    <th className="px-5 py-4 text-center font-bold text-gray-700">
+                      Paga ({nomePessoa})
+                    </th>
                     <th className="px-5 py-4 text-center font-bold text-gray-700">Ações</th>
                   </tr>
                 </thead>
@@ -133,10 +216,12 @@ export const PersonExpenses: React.FC = () => {
                     const isParcelado = expense.forma_pagamento === 'parcelado';
                     const isExpanded = expandedId === expense.id;
                     const isToggling = togglingId === expense.id;
+                    const pagaPorMim = pagaPelaPessoa(expense);
 
                     // Linha paga: verde escuro fixo, sem efeito de hover diferente.
+                    // Aqui "paga" é sempre em relação a ESTA pessoa (dona da página).
                     // Linha não paga: mantém o zebrado + hover azul claro de antes.
-                    const rowClasses = expense.paga
+                    const rowClasses = pagaPorMim
                       ? 'bg-green-700'
                       : idx % 2 === 0
                       ? 'bg-white hover:bg-blue-50'
@@ -144,9 +229,9 @@ export const PersonExpenses: React.FC = () => {
 
                     // Textos ficam claros quando a linha está paga, para manter contraste
                     // sobre o fundo verde escuro.
-                    const textPrimary = expense.paga ? 'text-white' : 'text-gray-800';
-                    const textSecondary = expense.paga ? 'text-green-50' : 'text-gray-600';
-                    const textParte = expense.paga
+                    const textPrimary = pagaPorMim ? 'text-white' : 'text-gray-800';
+                    const textSecondary = pagaPorMim ? 'text-green-50' : 'text-gray-600';
+                    const textParte = pagaPorMim
                       ? 'text-white'
                       : corDestaque === 'blue'
                       ? 'text-blue-600'
@@ -169,7 +254,7 @@ export const PersonExpenses: React.FC = () => {
                                 <button
                                   onClick={() => toggleExpand(expense.id)}
                                   className={`px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
-                                    expense.paga
+                                    pagaPorMim
                                       ? 'text-white hover:bg-green-800'
                                       : 'text-blue-600 hover:text-blue-800 hover:bg-blue-100'
                                   }`}
@@ -181,11 +266,11 @@ export const PersonExpenses: React.FC = () => {
                           </td>
                           <td className="px-5 py-4 text-center">
                             <button
-                              onClick={() => handleTogglePaga(expense.id, expense.paga)}
+                              onClick={() => handleTogglePaga(expense)}
                               disabled={isToggling}
-                              title={expense.paga ? 'Marcar como não paga' : 'Marcar como paga'}
+                              title={pagaPorMim ? 'Marcar como não paga' : 'Marcar como paga'}
                               className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm font-bold transition-colors mx-auto disabled:opacity-50 ${
-                                expense.paga
+                                pagaPorMim
                                   ? 'bg-green-900 border-green-900 text-white'
                                   : 'bg-white border-gray-300 text-transparent hover:border-green-400'
                               }`}
@@ -198,7 +283,7 @@ export const PersonExpenses: React.FC = () => {
                               onClick={() => setEditingExpense(expense)}
                               title="Editar compra"
                               className={`w-7 h-7 rounded-full border-2 flex items-center justify-center text-sm transition-colors mx-auto ${
-                                expense.paga
+                                pagaPorMim
                                   ? 'border-white/60 text-white hover:bg-green-800'
                                   : 'border-gray-300 text-gray-500 hover:border-blue-400 hover:text-blue-600'
                               }`}
@@ -210,7 +295,11 @@ export const PersonExpenses: React.FC = () => {
                         {isParcelado && isExpanded && (
                           <tr className="bg-gray-50">
                             <td colSpan={8} className="px-5">
-                              <InstallmentsPanel gastoId={expense.id} />
+                              <InstallmentsPanel
+                                gastoId={expense.id}
+                                pessoa={nomePessoa}
+                                onParcelaToggled={refetchParcelas}
+                              />
                             </td>
                           </tr>
                         )}

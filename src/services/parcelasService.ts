@@ -57,6 +57,8 @@ export const createParcelasForExpense = async (
     numero_parcela: i + 1,
     valor_parcela: i === numeroParcelas - 1 ? valorUltima : valorBase,
     paga: false,
+    paga_juliano: false,
+    paga_lidiane: false,
   }));
 
   const { error } = await supabase.from(TABLE_NAME).insert(parcelas);
@@ -68,13 +70,16 @@ export const createParcelasForExpense = async (
 };
 
 /**
- * Marca ou desmarca uma parcela como paga
+ * Marca ou desmarca uma parcela como paga (campo único, antigo — mantido
+ * por compatibilidade com telas que ainda usam o status combinado).
  */
 export const toggleParcelaPaga = async (id: string, paga: boolean): Promise<Parcela> => {
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .update({
       paga,
+      paga_juliano: paga,
+      paga_lidiane: paga,
       data_pagamento: paga ? new Date().toISOString() : null,
     })
     .eq('id', id)
@@ -83,6 +88,53 @@ export const toggleParcelaPaga = async (id: string, paga: boolean): Promise<Parc
 
   if (error) {
     console.error('Erro ao atualizar parcela:', error);
+    throw error;
+  }
+
+  return data;
+};
+
+/**
+ * Marca ou desmarca a parte de UMA pessoa (Juliano ou Lidiane) como paga
+ * nesta parcela. O campo "paga" (combinado) é recalculado automaticamente:
+ * só fica true quando as duas partes estiverem pagas. "data_pagamento" é
+ * preenchida quando as duas partes ficam pagas, e limpa se qualquer uma
+ * delas for desmarcada.
+ */
+export const toggleParcelaPagaPessoa = async (
+  id: string,
+  pessoa: 'Juliano' | 'Lidiane',
+  novoPaga: boolean
+): Promise<Parcela> => {
+  const { data: atual, error: fetchError } = await supabase
+    .from(TABLE_NAME)
+    .select('paga_juliano, paga_lidiane')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) {
+    console.error('Erro ao buscar parcela para atualizar pagamento:', fetchError);
+    throw fetchError;
+  }
+
+  const pagaJuliano = pessoa === 'Juliano' ? novoPaga : atual.paga_juliano;
+  const pagaLidiane = pessoa === 'Lidiane' ? novoPaga : atual.paga_lidiane;
+  const pagaCombinado = pagaJuliano && pagaLidiane;
+
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .update({
+      paga_juliano: pagaJuliano,
+      paga_lidiane: pagaLidiane,
+      paga: pagaCombinado,
+      data_pagamento: pagaCombinado ? new Date().toISOString() : null,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao atualizar parcela por pessoa:', error);
     throw error;
   }
 

@@ -127,7 +127,8 @@ export const deleteExpense = async (id: string): Promise<void> => {
 };
 
 /**
- * Marca ou desmarca um gasto como pago
+ * Marca ou desmarca um gasto como pago (campo único, antigo — mantido por
+ * compatibilidade com telas que ainda usam o status combinado).
  * @param id - ID do gasto
  * @param paga - true para marcar como pago, false para desmarcar
  * @returns Promessa contendo o gasto atualizado
@@ -135,13 +136,60 @@ export const deleteExpense = async (id: string): Promise<void> => {
 export const toggleExpensePaga = async (id: string, paga: boolean): Promise<Expense> => {
   const { data, error } = await supabase
     .from(TABLE_NAME)
-    .update({ paga })
+    .update({ paga, paga_juliano: paga, paga_lidiane: paga })
     .eq('id', id)
     .select()
     .single();
 
   if (error) {
     console.error('Erro ao atualizar status de pagamento:', error);
+    throw error;
+  }
+
+  return data;
+};
+
+/**
+ * Marca ou desmarca a parte de UMA pessoa (Juliano ou Lidiane) como paga
+ * neste gasto. O campo "paga" (combinado) é recalculado automaticamente:
+ * só fica true quando as duas partes estiverem pagas.
+ * @param id - ID do gasto
+ * @param pessoa - Qual pessoa está marcando/desmarcando sua parte
+ * @param novoPaga - true para marcar como pago, false para desmarcar
+ * @returns Promessa contendo o gasto atualizado
+ */
+export const toggleExpensePagaPessoa = async (
+  id: string,
+  pessoa: 'Juliano' | 'Lidiane',
+  novoPaga: boolean
+): Promise<Expense> => {
+  const { data: atual, error: fetchError } = await supabase
+    .from(TABLE_NAME)
+    .select('paga_juliano, paga_lidiane')
+    .eq('id', id)
+    .single();
+
+  if (fetchError) {
+    console.error('Erro ao buscar gasto para atualizar pagamento:', fetchError);
+    throw fetchError;
+  }
+
+  const pagaJuliano = pessoa === 'Juliano' ? novoPaga : atual.paga_juliano;
+  const pagaLidiane = pessoa === 'Lidiane' ? novoPaga : atual.paga_lidiane;
+
+  const { data, error } = await supabase
+    .from(TABLE_NAME)
+    .update({
+      paga_juliano: pagaJuliano,
+      paga_lidiane: pagaLidiane,
+      paga: pagaJuliano && pagaLidiane,
+    })
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao atualizar status de pagamento por pessoa:', error);
     throw error;
   }
 

@@ -4,13 +4,19 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { Parcela } from '../types/expense';
-import { getParcelasByGastoId, getAllParcelas, toggleParcelaPaga } from '../services/parcelasService';
+import {
+  getParcelasByGastoId,
+  getAllParcelas,
+  toggleParcelaPaga,
+  toggleParcelaPagaPessoa,
+} from '../services/parcelasService';
 
 interface UseParcelasReturn {
   parcelas: Parcela[];
   loading: boolean;
   error: string | null;
   togglePaga: (id: string, novoPaga: boolean) => Promise<void>;
+  togglePagaPessoa: (id: string, pessoa: 'Juliano' | 'Lidiane', novoPaga: boolean) => Promise<void>;
 }
 
 /**
@@ -50,7 +56,21 @@ export const useParcelas = (gastoId: string | null): UseParcelasReturn => {
     }
   };
 
-  return { parcelas, loading, error, togglePaga };
+  const togglePagaPessoa = async (
+    id: string,
+    pessoa: 'Juliano' | 'Lidiane',
+    novoPaga: boolean
+  ) => {
+    try {
+      const updated = await toggleParcelaPagaPessoa(id, pessoa, novoPaga);
+      setParcelas((prev) => prev.map((p) => (p.id === id ? updated : p)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar parcela da pessoa');
+      throw err;
+    }
+  };
+
+  return { parcelas, loading, error, togglePaga, togglePagaPessoa };
 };
 
 interface UseAllParcelasReturn {

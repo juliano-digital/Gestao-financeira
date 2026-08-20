@@ -11,6 +11,7 @@ import {
   updateExpense,
   deleteExpense,
   toggleExpensePaga,
+  toggleExpensePagaPessoa,
 } from '../services/expensesService';
 
 interface UseExpensesReturn {
@@ -23,6 +24,7 @@ interface UseExpensesReturn {
   editExpense: (id: string, expense: Partial<ExpenseFormData>) => Promise<void>;
   removeExpense: (id: string) => Promise<void>;
   togglePaga: (id: string, paga: boolean) => Promise<void>;
+  togglePagaPessoa: (id: string, pessoa: 'Juliano' | 'Lidiane', paga: boolean) => Promise<void>;
 }
 
 export const useExpenses = (): UseExpensesReturn => {
@@ -112,6 +114,20 @@ export const useExpenses = (): UseExpensesReturn => {
     }
   };
 
+  const togglePagaPessoa = async (id: string, pessoa: 'Juliano' | 'Lidiane', paga: boolean) => {
+    try {
+      setError(null);
+      const updated = await toggleExpensePagaPessoa(id, pessoa, paga);
+      setExpenses((prev) => prev.map((exp) => (exp.id === id ? updated : exp)));
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Erro ao atualizar status de pagamento da pessoa';
+      setError(message);
+      console.error(message);
+      throw err;
+    }
+  };
+
   useEffect(() => {
     fetchAllExpenses();
   }, []);
@@ -126,5 +142,6 @@ export const useExpenses = (): UseExpensesReturn => {
     editExpense,
     removeExpense,
     togglePaga,
+    togglePagaPessoa,
   };
 };
